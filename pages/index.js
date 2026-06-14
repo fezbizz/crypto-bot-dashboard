@@ -113,7 +113,7 @@ const CandleChart = ({ candles }) => {
   const cw = W / last.length;
 
   return (
-    <svg width={W} height={H} style={{ display: "block" }}>
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
       {last.map((c, i) => {
         const x = i * cw + cw * 0.1;
         const bw = cw * 0.7;
@@ -149,6 +149,13 @@ export default function CryptoBotDashboard() {
   const [tradeLog, setTradeLog] = useState([]);
   const [priceHistory, setPriceHistory] = useState({});
   const intervalRef = useRef(null);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     const c = {};
@@ -284,6 +291,13 @@ export default function CryptoBotDashboard() {
           .slide-in { animation: slideIn 0.4s ease; }
           .btn-hover:hover { filter: brightness(1.2); transform: translateY(-1px); transition: all 0.15s; }
           .pair-btn:hover { background: #0d2035 !important; }
+          @media (max-width: 768px) {
+            .header-title-sub { display: none; }
+            .header-status-label { display: none; }
+            .orbitron-title { font-size: 11px !important; letter-spacing: 1px !important; }
+            .pair-selector { overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+            .pair-selector::-webkit-scrollbar { display: none; }
+          }
         `}</style>
 
         {/* Scanline overlay */}
@@ -297,7 +311,7 @@ export default function CryptoBotDashboard() {
 
         {/* Header */}
         <div style={{
-          borderBottom:"1px solid #0d2035", padding:"16px 24px",
+          borderBottom:"1px solid #0d2035", padding: isMobile ? "10px 14px" : "16px 24px",
           display:"flex", alignItems:"center", justifyContent:"space-between",
           background:"rgba(8,12,20,0.95)", backdropFilter:"blur(10px)",
           position:"sticky", top:0, zIndex:10,
@@ -310,10 +324,10 @@ export default function CryptoBotDashboard() {
               fontSize:"16px", fontWeight:"bold",
             }}>⚡</div>
             <div>
-              <div style={{ fontFamily:"'Orbitron', monospace", fontSize:"14px", fontWeight:900, color:"#00d4ff", letterSpacing:"2px" }}>
+              <div className="orbitron-title" style={{ fontFamily:"'Orbitron', monospace", fontSize:"14px", fontWeight:900, color:"#00d4ff", letterSpacing:"2px" }}>
                 CLAUDE·TRADE
               </div>
-              <div style={{ fontSize:"9px", color:"#3a5570", letterSpacing:"3px", textTransform:"uppercase" }}>AI Crypto Bot Dashboard</div>
+              <div className="header-title-sub" style={{ fontSize:"9px", color:"#3a5570", letterSpacing:"3px", textTransform:"uppercase" }}>AI Crypto Bot Dashboard</div>
             </div>
           </div>
 
@@ -324,7 +338,7 @@ export default function CryptoBotDashboard() {
                 background: botActive ? "#00d4aa" : "#3a5570",
                 boxShadow: botActive ? "0 0 8px #00d4aa" : "none",
               }}/>
-              <span style={{ color: botActive ? "#00d4aa" : "#3a5570" }}>
+              <span className="header-status-label" style={{ color: botActive ? "#00d4aa" : "#3a5570" }}>
                 {botActive ? "BOT ACTIVE" : "STANDBY"}
               </span>
             </div>
@@ -333,8 +347,8 @@ export default function CryptoBotDashboard() {
               background: botActive ? "rgba(255,71,87,0.15)" : "rgba(0,212,170,0.15)",
               border: `1px solid ${botActive ? "#ff4757" : "#00d4aa"}`,
               color: botActive ? "#ff4757" : "#00d4aa",
-              padding:"6px 16px", borderRadius:"4px",
-              fontSize:"11px", cursor:"pointer", letterSpacing:"1px", transition:"all 0.2s",
+              padding: isMobile ? "5px 10px" : "6px 16px", borderRadius:"4px",
+              fontSize: isMobile ? "10px" : "11px", cursor:"pointer", letterSpacing:"1px", transition:"all 0.2s",
             }}>
               {botActive ? "⬛ STOP BOT" : "▶ START BOT"}
             </button>
@@ -351,10 +365,10 @@ export default function CryptoBotDashboard() {
           </div>
         </div>
 
-        <div className="grid-bg" style={{ padding:"20px 24px", position:"relative", zIndex:1 }}>
+        <div className="grid-bg" style={{ padding: isMobile ? "12px" : "20px 24px", position:"relative", zIndex:1 }}>
 
           {/* Pair selector */}
-          <div style={{ display:"flex", gap:"10px", marginBottom:"20px", flexWrap:"wrap" }}>
+          <div className="pair-selector" style={{ display:"flex", gap:"8px", marginBottom:"16px", flexWrap: isMobile ? "nowrap" : "wrap" }}>
             {PAIRS.map((pair) => {
               const p = prices[pair] || BASE_PRICES[pair];
               const chg = ((p - BASE_PRICES[pair]) / BASE_PRICES[pair]) * 100;
@@ -378,7 +392,7 @@ export default function CryptoBotDashboard() {
             })}
           </div>
 
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 320px", gap:"16px" }}>
+          <div style={{ display:"grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 320px", gap:"16px" }}>
 
             {/* LEFT COLUMN */}
             <div style={{ display:"flex", flexDirection:"column", gap:"16px" }}>
@@ -388,7 +402,7 @@ export default function CryptoBotDashboard() {
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                   <div>
                     <div style={{ fontSize:"11px", color:"#3a6080", letterSpacing:"2px", marginBottom:"6px" }}>{selectedPair} · LIVE</div>
-                    <div style={{ fontFamily:"'Orbitron',monospace", fontSize:"32px", fontWeight:900, color:"#fff", letterSpacing:"1px" }}>
+                    <div style={{ fontFamily:"'Orbitron',monospace", fontSize: isMobile ? "22px" : "32px", fontWeight:900, color:"#fff", letterSpacing:"1px" }}>
                       ${currentPrice.toLocaleString("en-US", { maximumFractionDigits: 2 })}
                     </div>
                     <div style={{ marginTop:"6px" }}>
@@ -407,7 +421,7 @@ export default function CryptoBotDashboard() {
 
               {/* Indicators */}
               {ind && (
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"10px" }}>
+                <div style={{ display:"grid", gridTemplateColumns: isMobile ? "repeat(2,1fr)" : "repeat(3,1fr)", gap:"10px" }}>
                   {[
                     { label:"RSI (14)", value: ind.rsi.toFixed(1), sub: ind.rsi > 70 ? "OVERBOUGHT" : ind.rsi < 30 ? "OVERSOLD" : "NEUTRAL", color: ind.rsi > 70 ? "#ff4757" : ind.rsi < 30 ? "#ffa502" : "#00d4aa" },
                     { label:"EMA TREND", value: ind.emaTrend, sub: `9: ${ind.ema9.toFixed(0)}`, color: ind.emaTrend === "BULLISH" ? "#00d4aa" : ind.emaTrend === "BEARISH" ? "#ff4757" : "#ffa502" },
@@ -429,7 +443,7 @@ export default function CryptoBotDashboard() {
               {position && (
                 <div className="slide-in" style={{ background:"rgba(0,212,170,0.05)", border:"1px solid rgba(0,212,170,0.3)", borderRadius:"10px", padding:"16px" }}>
                   <div style={{ fontSize:"10px", color:"#00d4aa", letterSpacing:"2px", marginBottom:"12px" }}>◉ OPEN POSITION</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"12px" }}>
+                  <div style={{ display:"grid", gridTemplateColumns: isMobile ? "repeat(2,1fr)" : "repeat(4,1fr)", gap:"12px" }}>
                     {[
                       { label:"PAIR", value: position.pair },
                       { label:"ENTRY", value: `$${Number(position.entry).toFixed(2)}` },
