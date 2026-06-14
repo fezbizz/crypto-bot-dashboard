@@ -331,7 +331,7 @@ export default function CryptoBotDashboard() {
             </div>
           </div>
 
-          <div style={{ display:"flex", alignItems:"center", gap:"20px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap: isMobile ? "8px" : "20px" }}>
             <div style={{ display:"flex", alignItems:"center", gap:"6px", fontSize:"11px" }}>
               <div className="live-dot" style={{
                 width:7, height:7, borderRadius:"50%",
@@ -347,20 +347,20 @@ export default function CryptoBotDashboard() {
               background: botActive ? "rgba(255,71,87,0.15)" : "rgba(0,212,170,0.15)",
               border: `1px solid ${botActive ? "#ff4757" : "#00d4aa"}`,
               color: botActive ? "#ff4757" : "#00d4aa",
-              padding: isMobile ? "5px 10px" : "6px 16px", borderRadius:"4px",
-              fontSize: isMobile ? "10px" : "11px", cursor:"pointer", letterSpacing:"1px", transition:"all 0.2s",
+              padding: isMobile ? "7px 10px" : "6px 16px", borderRadius:"4px",
+              fontSize: isMobile ? "14px" : "11px", cursor:"pointer", letterSpacing:"1px", transition:"all 0.2s",
             }}>
-              {botActive ? "⬛ STOP BOT" : "▶ START BOT"}
+              {isMobile ? (botActive ? "⬛" : "▶") : (botActive ? "⬛ STOP BOT" : "▶ START BOT")}
             </button>
 
             <button className="btn-hover" onClick={runAnalysis} disabled={analyzing} style={{
               background: analyzing ? "rgba(0,116,217,0.1)" : "rgba(0,116,217,0.2)",
               border:"1px solid #0074d9",
               color: analyzing ? "#3a5570" : "#4da6ff",
-              padding:"6px 16px", borderRadius:"4px",
-              fontSize:"11px", cursor: analyzing ? "not-allowed" : "pointer", letterSpacing:"1px", transition:"all 0.2s",
+              padding: isMobile ? "7px 10px" : "6px 16px", borderRadius:"4px",
+              fontSize: isMobile ? "14px" : "11px", cursor: analyzing ? "not-allowed" : "pointer", letterSpacing:"1px", transition:"all 0.2s",
             }}>
-              {analyzing ? "⟳ ANALYZING..." : "🤖 ASK CLAUDE"}
+              {isMobile ? (analyzing ? "⟳" : "🤖") : (analyzing ? "⟳ ANALYZING..." : "🤖 ASK CLAUDE")}
             </button>
           </div>
         </div>
