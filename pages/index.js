@@ -1,7 +1,7 @@
 import Head from "next/head";
 import { useState, useEffect, useRef } from "react";
 
-// ── Simulated live market data ─────────────────────────────
+// ── Simulated candle data (chart only) ────────────────────
 const generateCandles = (base, count = 60) => {
   const candles = [];
   let price = base;
@@ -138,6 +138,7 @@ const CandleChart = ({ candles }) => {
 export default function CryptoBotDashboard() {
   const PAIRS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"];
   const BASE_PRICES = { "BTC/USDT": 67800, "ETH/USDT": 3540, "SOL/USDT": 172, "BNB/USDT": 598 };
+  const BINANCE_SYMBOLS = { "BTC/USDT": "BTCUSDT", "ETH/USDT": "ETHUSDT", "SOL/USDT": "SOLUSDT", "BNB/USDT": "BNBUSDT" };
 
   const [selectedPair, setSelectedPair] = useState("BTC/USDT");
   const [candles, setCandles] = useState({});
@@ -150,6 +151,12 @@ export default function CryptoBotDashboard() {
   const [priceHistory, setPriceHistory] = useState({});
   const intervalRef = useRef(null);
   const [isMobile, setIsMobile] = useState(false);
+
+  // Real data states
+  const [botStatus, setBotStatus] = useState(null);
+  const [realPrices, setRealPrices] = useState({});
+  const [priceChanges, setPriceChanges] = useState({});
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -168,6 +175,7 @@ export default function CryptoBotDashboard() {
     setPriceHistory(ph);
   }, []);
 
+  // Simulated price drift (fallback when Binance unreachable)
   useEffect(() => {
     const t = setInterval(() => {
       setPrices((prev) => {
@@ -191,6 +199,46 @@ export default function CryptoBotDashboard() {
     }, 2000);
     return () => clearInterval(t);
   }, [prices]);
+
+  // Real Binance prices every 10s
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        const syms = encodeURIComponent(JSON.stringify(Object.values(BINANCE_SYMBOLS)));
+        const r = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbols=${syms}`);
+        const data = await r.json();
+        const rp = {}, rc = {};
+        data.forEach((d) => {
+          const pair = Object.keys(BINANCE_SYMBOLS).find((k) => BINANCE_SYMBOLS[k] === d.symbol);
+          if (pair) {
+            rp[pair] = parseFloat(d.lastPrice);
+            rc[pair] = parseFloat(d.priceChangePercent);
+          }
+        });
+        setRealPrices(rp);
+        setPriceChanges(rc);
+      } catch {}
+    };
+    fetchPrices();
+    const t = setInterval(fetchPrices, 10000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Railway bot status every 30s
+  useEffect(() => {
+    const fetchBot = async () => {
+      try {
+        const r = await fetch("/api/bot-status");
+        const data = await r.json();
+        setBotStatus(data);
+      } catch {
+        setBotStatus({ connected: false });
+      }
+    };
+    fetchBot();
+    const t = setInterval(fetchBot, 30000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     if (botActive) {
@@ -251,10 +299,21 @@ export default function CryptoBotDashboard() {
   };
 
   const ind = candles[selectedPair] ? getIndicators(selectedPair) : null;
-  const currentPrice = prices[selectedPair] || BASE_PRICES[selectedPair];
-  const base = BASE_PRICES[selectedPair];
-  const sessionChange = ((currentPrice - base) / base) * 100;
-  const positionPnL = position ? ((currentPrice - position.entry) / position.entry) * 100 : null;
+
+  // Prefer real Binance price; fall back to simulated
+  const currentPrice = realPrices[selectedPair] || prices[selectedPair] || BASE_PRICES[selectedPair];
+  const sessionChange = priceChanges[selectedPair] ?? (((currentPrice - BASE_PRICES[selectedPair]) / BASE_PRICES[selectedPair]) * 100);
+
+  // Railway bot real position (BTCUSDT only for now)
+  const botPos = botStatus?.connected ? (botStatus?.positions?.["BTCUSDT"] ?? null) : null;
+  const displayPosition = botPos || position;
+  const entryPrice = displayPosition?.entry_price ?? displayPosition?.entry ?? 0;
+  const positionPnL = displayPosition ? ((currentPrice - entryPrice) / entryPrice) * 100 : null;
+
+  // Real trade log from Railway bot; fall back to dashboard's simulated log
+  const botTrades = botStatus?.connected && botStatus?.trade_log?.length > 0
+    ? [...botStatus.trade_log].reverse().slice(0, 10)
+    : null;
 
   return (
     <>
@@ -331,15 +390,28 @@ export default function CryptoBotDashboard() {
             </div>
           </div>
 
-          <div style={{ display:"flex", alignItems:"center", gap: isMobile ? "8px" : "20px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap: isMobile ? "8px" : "16px" }}>
+            {/* Railway bot status */}
+            <div style={{ display:"flex", alignItems:"center", gap:"6px", fontSize:"11px" }}>
+              <div className={botStatus?.connected ? "live-dot" : ""} style={{
+                width:7, height:7, borderRadius:"50%",
+                background: botStatus?.connected ? "#00d4aa" : "#3a5570",
+                boxShadow: botStatus?.connected ? "0 0 8px #00d4aa" : "none",
+              }}/>
+              <span className="header-status-label" style={{ color: botStatus?.connected ? "#00d4aa" : "#3a5570" }}>
+                {botStatus === null ? "CONNECTING..." : botStatus.connected ? "RAILWAY LIVE" : "BOT OFFLINE"}
+              </span>
+            </div>
+
+            {/* Dashboard sim bot toggle */}
             <div style={{ display:"flex", alignItems:"center", gap:"6px", fontSize:"11px" }}>
               <div className="live-dot" style={{
                 width:7, height:7, borderRadius:"50%",
-                background: botActive ? "#00d4aa" : "#3a5570",
-                boxShadow: botActive ? "0 0 8px #00d4aa" : "none",
+                background: botActive ? "#ffa502" : "#3a5570",
+                boxShadow: botActive ? "0 0 8px #ffa502" : "none",
               }}/>
-              <span className="header-status-label" style={{ color: botActive ? "#00d4aa" : "#3a5570" }}>
-                {botActive ? "BOT ACTIVE" : "STANDBY"}
+              <span className="header-status-label" style={{ color: botActive ? "#ffa502" : "#3a5570" }}>
+                {botActive ? "SIM ON" : "SIM OFF"}
               </span>
             </div>
 
@@ -350,7 +422,7 @@ export default function CryptoBotDashboard() {
               padding: isMobile ? "7px 10px" : "6px 16px", borderRadius:"4px",
               fontSize: isMobile ? "14px" : "11px", cursor:"pointer", letterSpacing:"1px", transition:"all 0.2s",
             }}>
-              {isMobile ? (botActive ? "⬛" : "▶") : (botActive ? "⬛ STOP BOT" : "▶ START BOT")}
+              {isMobile ? (botActive ? "⬛" : "▶") : (botActive ? "⬛ STOP SIM" : "▶ START SIM")}
             </button>
 
             <button className="btn-hover" onClick={runAnalysis} disabled={analyzing} style={{
@@ -370,8 +442,8 @@ export default function CryptoBotDashboard() {
           {/* Pair selector */}
           <div className="pair-selector" style={{ display:"flex", gap:"8px", marginBottom:"16px", flexWrap: isMobile ? "nowrap" : "wrap" }}>
             {PAIRS.map((pair) => {
-              const p = prices[pair] || BASE_PRICES[pair];
-              const chg = ((p - BASE_PRICES[pair]) / BASE_PRICES[pair]) * 100;
+              const p = realPrices[pair] || prices[pair] || BASE_PRICES[pair];
+              const chg = priceChanges[pair] ?? (((p - BASE_PRICES[pair]) / BASE_PRICES[pair]) * 100);
               const active = pair === selectedPair;
               return (
                 <button key={pair} className="pair-btn" onClick={() => { setSelectedPair(pair); setAnalysis(null); }} style={{
@@ -401,20 +473,22 @@ export default function CryptoBotDashboard() {
               <div style={{ background:"rgba(13,21,32,0.9)", border:"1px solid #0d2035", borderRadius:"10px", padding:"20px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
                   <div>
-                    <div style={{ fontSize:"11px", color:"#3a6080", letterSpacing:"2px", marginBottom:"6px" }}>{selectedPair} · LIVE</div>
+                    <div style={{ fontSize:"11px", color:"#3a6080", letterSpacing:"2px", marginBottom:"6px" }}>
+                      {selectedPair} · {realPrices[selectedPair] ? "LIVE BINANCE" : "SIMULATED"}
+                    </div>
                     <div style={{ fontFamily:"'Orbitron',monospace", fontSize: isMobile ? "22px" : "32px", fontWeight:900, color:"#fff", letterSpacing:"1px" }}>
                       ${currentPrice.toLocaleString("en-US", { maximumFractionDigits: 2 })}
                     </div>
                     <div style={{ marginTop:"6px" }}>
                       <span style={{ fontSize:"13px", color: sessionChange >= 0 ? "#00d4aa" : "#ff4757" }}>
-                        {sessionChange >= 0 ? "▲" : "▼"} {Math.abs(sessionChange).toFixed(3)}% session
+                        {sessionChange >= 0 ? "▲" : "▼"} {Math.abs(sessionChange).toFixed(2)}% 24h
                       </span>
                     </div>
                   </div>
                   <Sparkline data={priceHistory[selectedPair]} color={sessionChange >= 0 ? "#00d4aa" : "#ff4757"} height={52} />
                 </div>
                 <div style={{ marginTop:"16px", borderTop:"1px solid #0d2035", paddingTop:"12px" }}>
-                  <div style={{ fontSize:"9px", color:"#3a5570", letterSpacing:"2px", marginBottom:"8px" }}>30-PERIOD CANDLES · 1H</div>
+                  <div style={{ fontSize:"9px", color:"#3a5570", letterSpacing:"2px", marginBottom:"8px" }}>30-PERIOD CANDLES · 1H (SIMULATED)</div>
                   <CandleChart candles={candles[selectedPair]} />
                 </div>
               </div>
@@ -439,16 +513,22 @@ export default function CryptoBotDashboard() {
                 </div>
               )}
 
-              {/* Position */}
-              {position && (
-                <div className="slide-in" style={{ background:"rgba(0,212,170,0.05)", border:"1px solid rgba(0,212,170,0.3)", borderRadius:"10px", padding:"16px" }}>
-                  <div style={{ fontSize:"10px", color:"#00d4aa", letterSpacing:"2px", marginBottom:"12px" }}>◉ OPEN POSITION</div>
+              {/* Open Position */}
+              {displayPosition && (
+                <div className="slide-in" style={{
+                  background: botPos ? "rgba(0,212,170,0.05)" : "rgba(255,165,2,0.05)",
+                  border: `1px solid ${botPos ? "rgba(0,212,170,0.3)" : "rgba(255,165,2,0.3)"}`,
+                  borderRadius:"10px", padding:"16px"
+                }}>
+                  <div style={{ fontSize:"10px", color: botPos ? "#00d4aa" : "#ffa502", letterSpacing:"2px", marginBottom:"12px" }}>
+                    {botPos ? "◉ OPEN POSITION — RAILWAY BOT" : "◉ OPEN POSITION — SIMULATOR"}
+                  </div>
                   <div style={{ display:"grid", gridTemplateColumns: isMobile ? "repeat(2,1fr)" : "repeat(4,1fr)", gap:"12px" }}>
                     {[
-                      { label:"PAIR", value: position.pair },
-                      { label:"ENTRY", value: `$${Number(position.entry).toFixed(2)}` },
-                      { label:"STOP", value: `$${position.stop.toFixed(2)}`, color:"#ff4757" },
-                      { label:"TARGET", value: `$${position.target.toFixed(2)}`, color:"#00d4aa" },
+                      { label:"PAIR", value: displayPosition.pair ?? "BTCUSDT" },
+                      { label:"ENTRY", value: `$${Number(entryPrice).toLocaleString("en-US", { maximumFractionDigits: 2 })}` },
+                      { label:"STOP", value: `$${Number(displayPosition.stop_loss ?? displayPosition.stop ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 })}`, color:"#ff4757" },
+                      { label:"TARGET", value: `$${Number(displayPosition.take_profit ?? displayPosition.target ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 })}`, color:"#00d4aa" },
                     ].map((f) => (
                       <div key={f.label}>
                         <div style={{ fontSize:"9px", color:"#3a5570", letterSpacing:"1px" }}>{f.label}</div>
@@ -547,11 +627,112 @@ export default function CryptoBotDashboard() {
                 )}
               </div>
 
+              {/* Railway Bot Status Panel */}
+              <div style={{
+                background:"rgba(13,21,32,0.9)",
+                border:`1px solid ${botStatus?.connected ? "rgba(0,212,170,0.3)" : "#0d2035"}`,
+                borderRadius:"10px", padding:"16px"
+              }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"14px" }}>
+                  <div className={botStatus?.connected ? "live-dot" : ""} style={{
+                    width:7, height:7, borderRadius:"50%",
+                    background: botStatus?.connected ? "#00d4aa" : "#3a5570",
+                    boxShadow: botStatus?.connected ? "0 0 8px #00d4aa" : "none",
+                    flexShrink:0,
+                  }}/>
+                  <span style={{ fontSize:"9px", color: botStatus?.connected ? "#00d4aa" : "#3a5570", letterSpacing:"2px" }}>
+                    RAILWAY BOT — {botStatus === null ? "CONNECTING..." : botStatus.connected ? "LIVE" : "OFFLINE"}
+                  </span>
+                </div>
+
+                {botStatus?.connected ? (
+                  <>
+                    {/* Stats row */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px", marginBottom:"12px" }}>
+                      <div style={{ background:"rgba(0,0,0,0.2)", borderRadius:"6px", padding:"10px" }}>
+                        <div style={{ fontSize:"9px", color:"#3a5570", letterSpacing:"1px", marginBottom:"4px" }}>TOTAL P&L</div>
+                        <div style={{
+                          fontFamily:"'Orbitron',monospace", fontSize:"14px",
+                          color: botStatus.total_pnl >= 0 ? "#00d4aa" : "#ff4757"
+                        }}>
+                          {botStatus.total_pnl >= 0 ? "+" : ""}{botStatus.total_pnl?.toFixed(2)}%
+                        </div>
+                      </div>
+                      <div style={{ background:"rgba(0,0,0,0.2)", borderRadius:"6px", padding:"10px" }}>
+                        <div style={{ fontSize:"9px", color:"#3a5570", letterSpacing:"1px", marginBottom:"4px" }}>TRADES TODAY</div>
+                        <div style={{ fontFamily:"'Orbitron',monospace", fontSize:"14px", color:"#c8d8e8" }}>
+                          {botStatus.trades_today?.BTCUSDT ?? 0} / {botStatus.config?.check_interval ? 6 : 6}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Position or watching */}
+                    {botPos ? (
+                      <div style={{ background:"rgba(0,212,170,0.06)", border:"1px solid rgba(0,212,170,0.2)", borderRadius:"6px", padding:"10px" }}>
+                        <div style={{ fontSize:"9px", color:"#00d4aa", marginBottom:"6px", letterSpacing:"1px" }}>OPEN POSITION</div>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px", fontSize:"10px" }}>
+                          <div><span style={{ color:"#3a5570" }}>ENTRY </span><span style={{ color:"#fff" }}>${Number(botPos.entry_price).toLocaleString()}</span></div>
+                          <div><span style={{ color:"#3a5570" }}>P&L </span><span style={{ color: positionPnL >= 0 ? "#00d4aa" : "#ff4757" }}>{positionPnL >= 0 ? "+" : ""}{positionPnL?.toFixed(2)}%</span></div>
+                          <div><span style={{ color:"#3a5570" }}>STOP </span><span style={{ color:"#ff4757" }}>${Number(botPos.stop_loss).toLocaleString()}</span></div>
+                          <div><span style={{ color:"#3a5570" }}>TARGET </span><span style={{ color:"#00d4aa" }}>${Number(botPos.take_profit).toLocaleString()}</span></div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize:"11px", color:"#3a5570", textAlign:"center", padding:"8px 0" }}>
+                        Watching market — no open position
+                      </div>
+                    )}
+
+                    {/* Last update */}
+                    <div style={{ marginTop:"10px", fontSize:"9px", color:"#3a5570", textAlign:"right" }}>
+                      Updated {new Date(botStatus.last_update).toLocaleTimeString()}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize:"11px", color:"#3a5570", textAlign:"center", padding:"16px 0" }}>
+                    Cannot reach Railway bot.<br/>Check deployment status.
+                  </div>
+                )}
+              </div>
+
               {/* Trade Log */}
               <div style={{ background:"rgba(13,21,32,0.9)", border:"1px solid #0d2035", borderRadius:"10px", padding:"16px" }}>
-                <div style={{ fontSize:"9px", color:"#3a5570", letterSpacing:"2px", marginBottom:"12px" }}>📋 TRADE LOG</div>
-                {tradeLog.length === 0 ? (
-                  <div style={{ fontSize:"11px", color:"#3a5570", textAlign:"center", padding:"16px 0" }}>No trades yet</div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>
+                  <span style={{ fontSize:"9px", color:"#3a5570", letterSpacing:"2px" }}>📋 TRADE LOG</span>
+                  {botTrades && <span style={{ fontSize:"8px", color:"#00d4aa" }}>RAILWAY</span>}
+                </div>
+
+                {botTrades ? (
+                  <div style={{ display:"flex", flexDirection:"column", gap:"6px", maxHeight:"240px", overflowY:"auto" }}>
+                    {botTrades.map((t, i) => (
+                      <div key={i} className="slide-in" style={{
+                        display:"flex", justifyContent:"space-between", alignItems:"center",
+                        padding:"6px 10px", borderRadius:"4px",
+                        background: t.action === "BUY" ? "rgba(0,212,170,0.05)" : "rgba(255,71,87,0.05)",
+                        border: `1px solid ${t.action === "BUY" ? "rgba(0,212,170,0.15)" : "rgba(255,71,87,0.15)"}`,
+                      }}>
+                        <div>
+                          <span style={{ fontSize:"10px", color: t.action === "BUY" ? "#00d4aa" : "#ff4757", fontWeight:600 }}>
+                            {t.action === "BUY" ? "▲" : "▼"} {t.action}
+                          </span>
+                          <span style={{ fontSize:"9px", color:"#3a5570", marginLeft:"6px" }}>{t.pair}</span>
+                        </div>
+                        <div style={{ textAlign:"right" }}>
+                          <div style={{ fontSize:"10px", color:"#c8d8e8" }}>${Number(t.price).toLocaleString("en-US", { maximumFractionDigits: 2 })}</div>
+                          {t.pnl !== 0 && t.action === "SELL" && (
+                            <div style={{ fontSize:"9px", color: t.pnl >= 0 ? "#00d4aa" : "#ff4757" }}>
+                              {t.pnl >= 0 ? "+" : ""}{Number(t.pnl).toFixed(2)}%
+                            </div>
+                          )}
+                          <div style={{ fontSize:"8px", color:"#3a5570" }}>{t.time?.slice(0, 16).replace("T", " ")}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : tradeLog.length === 0 ? (
+                  <div style={{ fontSize:"11px", color:"#3a5570", textAlign:"center", padding:"16px 0" }}>
+                    {botStatus?.connected === false ? "Bot offline — no trade history" : "No trades yet"}
+                  </div>
                 ) : (
                   <div style={{ display:"flex", flexDirection:"column", gap:"6px", maxHeight:"200px", overflowY:"auto" }}>
                     {tradeLog.map((t, i) => (
@@ -584,7 +765,7 @@ export default function CryptoBotDashboard() {
                 borderRadius:"8px", padding:"12px",
                 fontSize:"9px", color:"#7a6020", lineHeight:"1.6",
               }}>
-                ⚠️ EDUCATIONAL PURPOSES ONLY. This dashboard uses simulated prices. No real trades are executed here. Crypto trading carries extreme risk.
+                ⚠️ EDUCATIONAL PURPOSES ONLY. Prices sourced from Binance public API. Bot trades on testnet (no real money). Crypto trading carries extreme risk.
               </div>
             </div>
           </div>
